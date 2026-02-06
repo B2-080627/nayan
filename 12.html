@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Nayan's Touch-Enabled Interactive Map</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-draw@1.0.4/dist/leaflet.draw.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css"/>
+
+<!-- <style>
+  body { margin:0; font-family:Arial; }
+  #map {
+    width:100%;
+    height:90vh;
+    touch-action:none;
+    -webkit-user-select:none;
+    user-select:none;
+  }
+  #toolbar { padding:8px; text-align:center; background:#f0f0f0; }
+  select, button, input { margin:3px; padding:5px 10px; }
+  .polygon-label { cursor:pointer; }
+</style> -->
+<link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+<h2 style="text-align:center;">Nayan's Full Touch Interactive Map</h2>
+
+<div id="toolbar">
+  <label>Fill:</label>
+  <select id="fillColor">
+    <option value="orange" selected>Orange</option>
+    <option value="red">Red</option>
+    <option value="green">Green</option>
+    <option value="blue">Blue</option>
+    <option value="yellow">Yellow</option>
+  </select>
+
+  <label>Stroke:</label>
+  <select id="strokeColor">
+    <option value="red" selected>Red</option>
+    <option value="black">Black</option>
+    <option value="blue">Blue</option>
+    <option value="green">Green</option>
+  </select>
+
+  <label>Label:</label>
+  <input type="color" id="labelColor" value="#000000">
+
+  <label>Font:</label>
+  <select id="labelFont">
+    <option value="Arial" selected>Arial</option>
+    <option value="Verdana">Verdana</option>
+    <option value="Georgia">Georgia</option>
+  </select>
+
+  <label>Size:</label>
+  <select id="labelFontSize">
+    <option value="14px" selected>14px</option>
+    <option value="18px">18px</option>
+    <option value="24px">24px</option>
+  </select>
+
+  <button id="togglePencil">Enable Freehand Pencil</button>
+  <button id="toggleEraser">Enable Eraser</button>
+  <button onclick="exportGeoJSON()">Export GeoJSON</button>
+  <button onclick="exportPNG()">Export PNG</button>
+</div>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dom-to-image@2.6.0/src/dom-to-image.min.js"></script>
+<script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+
+<script>
+/* ---------------- MAP SETUP ---------------- */
+const map = L.map('map', {
+    center:[20,80],
+    zoom:4,
+    zoomControl:true,
+    scrollWheelZoom:true,
+    doubleClickZoom:true,
+    touchZoom:true,
+    tap:false
+});
+
+// IMPORTANT: allow normal touch gestures when NOT drawing
+map.getContainer().style.touchAction = 'auto';
+
+const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19 }).addTo(map);
+const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}');
+const terrain = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png');
+
+L.control.layers({OSM:osm, Satellite:satellite, Terrain:terrain}).addTo(map);
+
+const drawnItems = new L.FeatureGroup();
+map.addLayer(drawnItems);
+
+/* ---------------- INDIA GEOJSON ---------------- */
+fetch('india.geojson')
+  .then(r => r.json())
+  .then(data => {
+    L.geoJSON(data, {
+      style:{ color:'#000', weight:2, fillColor:'#000', fillOpacity:0.1 },
+      interactive:false
+    }).addTo(map);
+  });
+
+/* ---------------- LABEL ICON ---------------- */
+function createLabelIcon(text, color, font, size){
+  return L.divIcon({
+    className:"polygon-label",
+    html:`<span style="color:${color}; font-family:${font}; font-size:${size}; font-weight:bold;">${text}</span>`
+  });
+}
+
+/* ---------------- LEAFLET DRAW ---------------- */
+const drawControl = new L.Control.Draw({
+    draw:{ polyline:false },
+    edit:{ featureGroup:drawnItems }
+});
+map.addControl(drawControl);
+
+map.on("draw:created", e => {
+    const layer = e.layer;
+    drawnItems.addLayer(layer);
+    const name = prompt("Enter name:");
+    if(name){
+        L.marker(layer.getBounds().getCenter(), {
+            icon:createLabelIcon(name, labelColor.value, labelFont.value, labelFontSize.value),
+            draggable:true
+        }).addTo(drawnItems);
+    }
+});
+
+/* ---------------- FREEHAND DRAWING ---------------- */
+let isDrawing=false, currentLine=null;
+const mapContainer = map.getContainer();
+
+function getLatLng(e){
+  const rect = mapContainer.getBoundingClientRect();
+  const t = e.touches ? e.touches[0] : e;
+  return map.containerPointToLatLng([
+    t.clientX - rect.left,
+    t.clientY - rect.top
+  ]);
+}
+
+togglePencil.onclick=()=>{
+  isDrawing=!isDrawing;
+  if(isDrawing){
+    map.dragging.disable();
+    map.scrollWheelZoom.disable();
+    map.doubleClickZoom.disable();
+    map.touchZoom.disable();
+    map.getContainer().style.touchAction='none';
+  } else {
+    map.dragging.enable();
+    map.scrollWheelZoom.enable();
+    map.doubleClickZoom.enable();
+    map.touchZoom.enable();
+    map.getContainer().style.touchAction='auto';
+  }
+  togglePencil.textContent=isDrawing?"Disable Freehand":"Enable Freehand";
+};
+
+mapContainer.addEventListener('touchstart',e=>{
+  if(!isDrawing) return;
+  e.preventDefault();
+  currentLine=L.polyline([getLatLng(e)],{color:strokeColor.value,weight:3}).addTo(drawnItems);
+},{passive:false});
+
+mapContainer.addEventListener('touchmove',e=>{
+  if(!isDrawing||!currentLine) return;
+  e.preventDefault();
+  currentLine.addLatLng(getLatLng(e));
+},{passive:false});
+
+mapContainer.addEventListener('touchend',()=>{
+  if(!currentLine) return;
+  const pts=currentLine.getLatLngs();
+  drawnItems.removeLayer(currentLine);
+  currentLine=null;
+  if(pts.length<3) return;
+  const poly=L.polygon(pts,{color:strokeColor.value,fillColor:fillColor.value,fillOpacity:0.5}).addTo(drawnItems);
+  const name=prompt('Enter name:');
+  if(name){
+    L.marker(poly.getBounds().getCenter(),{icon:createLabelIcon(name,labelColor.value,labelFont.value,labelFontSize.value),draggable:true}).addTo(drawnItems);
+  }
+});
+
+mapContainer.addEventListener('mousedown',e=>{
+  if(!isDrawing) return;
+  currentLine=L.polyline([getLatLng(e)],{color:strokeColor.value,weight:3}).addTo(drawnItems);
+});
+
+mapContainer.addEventListener('mousemove',e=>{
+  if(isDrawing&&currentLine) currentLine.addLatLng(getLatLng(e));
+});
+
+mapContainer.addEventListener('mouseup',()=>{
+  if(!currentLine) return;
+  const pts=currentLine.getLatLngs();
+  drawnItems.removeLayer(currentLine);
+  currentLine=null;
+  if(pts.length<3) return;
+  const poly=L.polygon(pts,{color:strokeColor.value,fillColor:fillColor.value,fillOpacity:0.5}).addTo(drawnItems);
+  const name=prompt('Enter name:');
+  if(name){
+    L.marker(poly.getBounds().getCenter(),{icon:createLabelIcon(name,labelColor.value,labelFont.value,labelFontSize.value),draggable:true}).addTo(drawnItems);
+  }
+});
+
+
+toggleEraser.onclick=()=>{
+  isErasing=!isErasing;
+  map.dragging[isErasing?'disable':'enable']();
+  toggleEraser.textContent=isErasing?"Disable Eraser":"Enable Eraser";
+};
+
+map.on('click',e=>{
+  if(!isErasing) return;
+  drawnItems.eachLayer(l=>{ if(l.getBounds&&l.getBounds().contains(e.latlng)) drawnItems.removeLayer(l); });
+});
+
+/* ---------------- EXPORT ---------------- */
+function exportGeoJSON(){
+  const g=drawnItems.toGeoJSON();
+  const a=document.createElement('a');
+  a.href='data:application/json,'+encodeURIComponent(JSON.stringify(g,null,2));
+  a.download='drawing.geojson'; a.click();
+}
+function exportPNG(){ domtoimage.toPng(mapContainer).then(u=>{const a=document.createElement('a');a.href=u;a.download='map.png';a.click();}); }
+
+/* ---------------- WORLD + WIKIPEDIA ---------------- */
+fetch('https://raw.githubusercontent.com/johan/world.geo.json/master/countries.geo.json')
+.then(r=>r.json())
+.then(world=>{
+  L.geoJSON(world,{style:{color:'#666',weight:1,fillOpacity:0}})
+  .on('click',e=>{
+    const name=e.layer.feature.properties.name;
+    map.fitBounds(e.layer.getBounds());
+    fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(name)}`)
+    .then(r=>r.json())
+    .then(info=>{
+      let html=`<b>${name}</b><br><br>${info.extract||''}<br><br>`;
+      if(info.content_urls) html+=`<a href="${info.content_urls.desktop.page}" target="_blank">Open Wikipedia</a>`;
+      L.popup().setLatLng(e.latlng).setContent(html).openOn(map);
+    });
+  }).addTo(map);
+});
+
+/* ---------------- SEARCH ---------------- */
+L.Control.geocoder({ defaultMarkGeocode:false })
+.on('markgeocode',e=>map.fitBounds(e.geocode.bbox))
+.addTo(map);
+</script>
+</body>
+</html>

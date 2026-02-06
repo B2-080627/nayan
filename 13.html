@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Nayan's Live Aircraft Map</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
+<style>
+body { margin:0; font-family:Arial; }
+#map { width:100%; height:100vh; }
+
+#toolbar{
+  position:absolute;
+  top:10px;
+  left:50%;
+  transform:translateX(-50%);
+  background:#fff;
+  padding:6px;
+  z-index:1000;
+  border-radius:6px;
+}
+
+button{ margin:3px; padding:6px 10px; }
+
+/* Floating mobile button */
+#fab{
+  position:fixed;
+  bottom:20px;
+  right:20px;
+  width:56px;
+  height:56px;
+  border-radius:50%;
+  background:#1976d2;
+  color:#fff;
+  font-size:22px;
+  border:none;
+  z-index:9999;
+  box-shadow:0 4px 12px rgba(0,0,0,0.3);
+  cursor:pointer;
+}
+
+#fab:hover{
+  background:#1565c0;
+}
+
+.aircraft{
+  font-size:18px;
+  transform-origin:center;
+}
+
+#status{
+  position:absolute;
+  top:60px;
+  left:50%;
+  transform:translateX(-50%);
+  background:#333;
+  color:#fff;
+  padding:6px 12px;
+  border-radius:4px;
+  z-index:1000;
+  display:none;
+  font-size:13px;
+}
+</style>
+</head>
+
+<body>
+
+<div id="toolbar">
+  <button id="toggleFlights">🛩️ OpenSky Flights</button>
+  <button id="adsb">🛰️ ADS-B</button>
+</div>
+
+<div id="status"></div>
+<div id="map"></div>
+<button id="fab">✈️</button>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+// Wait for Leaflet to load
+window.addEventListener('load', function() {
+
+/* ---------------- MAP ---------------- */
+const map = L.map("map").setView([13.0827, 80.2707],10); // Chennai
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
+  maxZoom:19,
+  attribution:'© OpenStreetMap'
+}).addTo(map);
+
+/* ---------------- STATUS MESSAGE ---------------- */
+function showStatus(msg, duration=3000){
+  const status = document.getElementById("status");
+  status.textContent = msg;
+  status.style.display = "block";
+  setTimeout(()=>{ status.style.display = "none"; }, duration);
+}
+
+/* ---------------- AIRCRAFT ICON ---------------- */
+function planeIcon(heading){
+  return L.divIcon({
+    className:"",
+    html:`<div class="aircraft" style="transform:rotate(${heading||0}deg)">✈️</div>`,
+    iconSize:[20,20],
+    iconAnchor:[10,10]
+  });
+}
+
+/* ---------------- OPENSKY API ---------------- */
+let flightLayer = L.layerGroup();
+let enabled = false;
+let loading = false;
+
+async function loadFlights(){
+  if(loading) return;
+  loading = true;
+  
+  flightLayer.clearLayers();
+  showStatus("Loading flights...", 30000);
+
+  const b = map.getBounds();
+  
+  // OpenSky API endpoint
+  const url = `https://opensky-network.org/api/states/all?lamin=${b.getSouth().toFixed(2)}&lomin=${b.getWest().toFixed(2)}&lamax=${b.getNorth().toFixed(2)}&lomax=${b.getEast().toFixed(2)}`;
+
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json'
+      }
+    });
+
+    if(!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
+
+    const data = await res.json();
+
+    if(!data || !data.states || data.states.length === 0) {
+      showStatus("No flights found in this area");
+      loading = false;
+      return;
+    }
+
+    let count = 0;
+    data.states.forEach(s=>{
+      const [
+        icao, callsign, origin_country, time_position, 
+        last_contact, lon, lat, baro_altitude, 
+        on_ground, velocity, true_track, vertical_rate
+      ] = s;
+
+      if(!lat || !lon) return;
+
+      const heading = true_track || 0;
+      const speed = velocity || 0;
+
+      L.marker([lat, lon], {
+        icon: planeIcon(heading)
+      })
+      .bindPopup(`
+        <b>${(callsign || "Unknown").trim()}</b><br>
+        <small>ICAO: ${icao}</small><br>
+        Country: ${origin_country}<br>
+        Speed: ${(speed * 3.6).toFixed(0)} km/h<br>
+        Altitude: ${baro_altitude ? baro_altitude.toFixed(0) + 'm' : 'N/A'}<br>
+        Heading: ${heading.toFixed(0)}°<br>
+        ${on_ground ? '🛬 On Ground' : '🛫 In Flight'}
+      `)
+      .addTo(flightLayer);
+      count++;
+    });
+
+    showStatus(`✓ Loaded ${count} flights`);
+    
+  } catch(err) {
+    console.error("OpenSky API Error:", err);
+    showStatus("⚠️ OpenSky API unavailable. Try: 1) Different area 2) Wait a minute (rate limit) 3) Use ADS-B/FR24 buttons instead", 5000);
+  }
+  
+  loading = false;
+}
+
+/* Toggle Flights */
+document.getElementById("toggleFlights").onclick = async ()=>{
+  if(enabled){
+    map.removeLayer(flightLayer);
+    enabled = false;
+    showStatus("Flights hidden");
+  } else {
+    await loadFlights();
+    flightLayer.addTo(map);
+    enabled = true;
+  }
+};
+
+/* Auto refresh every 10 seconds when enabled */
+setInterval(()=>{ 
+  if(enabled && !loading) loadFlights(); 
+}, 10000);
+
+/* ---------------- ADS-B EXCHANGE ---------------- */
+document.getElementById("adsb").onclick = ()=>{
+  const c = map.getCenter();
+  window.open(`https://globe.adsbexchange.com/?lat=${c.lat}&lon=${c.lng}&zoom=${map.getZoom()}`,"_blank");
+};
+
+/* ---------------- FAB BUTTON (FLIGHTRADAR24) ---------------- */
+document.getElementById("fab").onclick = ()=>{
+  const c = map.getCenter();
+  window.open(`https://www.flightradar24.com/${c.lat.toFixed(2)},${c.lng.toFixed(2)}/${map.getZoom()}`,"_blank");
+};
+
+}); // End of window load event
+</script>
+
+</body>
+</html>
