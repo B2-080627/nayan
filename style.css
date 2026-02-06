@@ -1,0 +1,367 @@
+/* ============================================
+   NAYAN'S BEAUTIFUL INTERACTIVE MAP STYLES
+   ============================================ */
+
+/* -------- GLOBAL RESET -------- */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* -------- HEADER -------- */
+h2 {
+  margin: 0;
+  padding: 20px;
+  text-align: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+  border-bottom: 3px solid rgba(255, 255, 255, 0.2);
+}
+
+/* -------- TOOLBAR -------- */
+#toolbar {
+  padding: 15px;
+  background: linear-gradient(to bottom, #ffffff 0%, #f8f9fa 100%);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+#toolbar label {
+  font-weight: 600;
+  color: #333;
+  font-size: 14px;
+  margin-right: 5px;
+}
+
+/* -------- SELECT DROPDOWNS -------- */
+select {
+  padding: 8px 12px;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  background: white;
+  color: #333;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  outline: none;
+  min-width: 100px;
+}
+
+select:hover {
+  border-color: #667eea;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
+}
+
+select:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+/* -------- COLOR INPUT -------- */
+input[type="color"] {
+  padding: 4px;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  width: 50px;
+  height: 38px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+input[type="color"]:hover {
+  border-color: #667eea;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
+}
+
+/* -------- BUTTONS -------- */
+button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(102, 126, 234, 0.4);
+  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+}
+
+button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
+}
+
+#togglePencil {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+
+#togglePencil:hover {
+  background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);
+}
+
+#toggleEraser {
+  background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+}
+
+#toggleEraser:hover {
+  background: linear-gradient(135deg, #fee140 0%, #fa709a 100%);
+}
+
+button[onclick*="exportGeoJSON"] {
+  background: linear-gradient(135deg, #30cfd0 0%, #330867 100%);
+}
+
+button[onclick*="exportGeoJSON"]:hover {
+  background: linear-gradient(135deg, #330867 0%, #30cfd0 100%);
+}
+
+button[onclick*="exportPNG"] {
+  background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+  color: #333;
+}
+
+button[onclick*="exportPNG"]:hover {
+  background: linear-gradient(135deg, #fed6e3 0%, #a8edea 100%);
+}
+
+/* -------- MAP CONTAINER -------- */
+#map {
+  width: 100%;
+  height: 90vh;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  box-shadow: inset 0 4px 12px rgba(0, 0, 0, 0.1);
+  position: relative;
+}
+
+/* -------- POLYGON LABELS -------- */
+.polygon-label {
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 4px 8px;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
+  border: 2px solid rgba(102, 126, 234, 0.5);
+}
+
+.polygon-label:hover {
+  background: rgba(102, 126, 234, 0.95);
+  color: white !important;
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.polygon-label span {
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* -------- LEAFLET CONTROLS -------- */
+.leaflet-control-layers {
+  border-radius: 10px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  border: 2px solid rgba(102, 126, 234, 0.3) !important;
+}
+
+.leaflet-control-zoom {
+  border-radius: 10px !important;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  border: none !important;
+}
+
+.leaflet-control-zoom a {
+  background: white !important;
+  color: #667eea !important;
+  border: none !important;
+  font-weight: bold;
+  transition: all 0.3s ease;
+}
+
+.leaflet-control-zoom a:hover {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  color: white !important;
+}
+
+.leaflet-draw-toolbar {
+  border-radius: 10px !important;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+}
+
+.leaflet-draw-toolbar a {
+  transition: all 0.3s ease;
+}
+
+.leaflet-draw-toolbar a:hover {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+}
+
+/* -------- POPUP STYLING -------- */
+.leaflet-popup-content-wrapper {
+  border-radius: 12px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2) !important;
+  border: 2px solid rgba(102, 126, 234, 0.3);
+}
+
+.leaflet-popup-content {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  margin: 15px !important;
+  line-height: 1.6;
+}
+
+.leaflet-popup-content b {
+  color: #667eea;
+  font-size: 18px;
+}
+
+.leaflet-popup-content a {
+  color: #667eea;
+  text-decoration: none;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.leaflet-popup-content a:hover {
+  color: #764ba2;
+  text-decoration: underline;
+}
+
+.leaflet-popup-tip {
+  border: none !important;
+}
+
+/* -------- GEOCODER SEARCH -------- */
+.leaflet-control-geocoder {
+  border-radius: 10px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  border: 2px solid rgba(102, 126, 234, 0.3) !important;
+  overflow: hidden;
+}
+
+.leaflet-control-geocoder-form input {
+  border-radius: 8px !important;
+  border: 2px solid #ddd !important;
+  padding: 8px !important;
+  transition: all 0.3s ease;
+}
+
+.leaflet-control-geocoder-form input:focus {
+  border-color: #667eea !important;
+  outline: none !important;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+/* -------- RESPONSIVE DESIGN -------- */
+@media (max-width: 768px) {
+  h2 {
+    font-size: 22px;
+    padding: 15px;
+  }
+
+  #toolbar {
+    padding: 10px;
+    gap: 8px;
+  }
+
+  #toolbar label {
+    font-size: 12px;
+  }
+
+  select {
+    min-width: 80px;
+    font-size: 12px;
+    padding: 6px 10px;
+  }
+
+  button {
+    padding: 8px 15px;
+    font-size: 12px;
+  }
+
+  #map {
+    height: 85vh;
+  }
+}
+
+@media (max-width: 480px) {
+  h2 {
+    font-size: 18px;
+    padding: 12px;
+  }
+
+  #toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #toolbar > * {
+    width: 100%;
+  }
+
+  button {
+    width: 100%;
+    margin: 3px 0;
+  }
+}
+
+/* -------- ANIMATIONS -------- */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+#toolbar {
+  animation: fadeIn 0.5s ease-out;
+}
+
+/* -------- SCROLLBAR STYLING -------- */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+}
