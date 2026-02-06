@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Interactive Map with Leaflet Draw + Freehand</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-draw@1.0.4/dist/leaflet.draw.css"/>
+<style>
+  body { margin:0; font-family: Arial, sans-serif; }
+  #map { width:100%; height:90vh; }
+  #toolbar { padding:8px; text-align:center; background:#f0f0f0; }
+  select, button, input { margin:3px; padding:5px 10px; font-size:14px; }
+  .polygon-label { cursor:pointer; }
+</style>
+</head>
+<body>
+
+<h2 style="text-align:center;">Interactive Map with Leaflet Draw + Freehand</h2>
+
+<div id="toolbar">
+  <label>Fill Color:</label>
+  <select id="fillColor">
+    <option value="orange">Orange</option>
+    <option value="red">Red</option>
+    <option value="green">Green</option>
+    <option value="blue">Blue</option>
+    <option value="yellow">Yellow</option>
+    <option value="purple">Purple</option>
+  </select>
+
+  <label>Stroke Color:</label>
+  <select id="strokeColor">
+    <option value="red">Red</option>
+    <option value="black">Black</option>
+    <option value="blue">Blue</option>
+    <option value="green">Green</option>
+    <option value="orange">Orange</option>
+    <option value="purple">Purple</option>
+  </select>
+
+  <label>Label Color:</label>
+  <input type="color" id="labelColor" value="#000000">
+
+  <label>Font:</label>
+  <select id="labelFont">
+    <option value="Arial">Arial</option>
+    <option value="Verdana">Verdana</option>
+    <option value="Times New Roman">Times New Roman</option>
+    <option value="Courier New">Courier New</option>
+    <option value="Georgia">Georgia</option>
+  </select>
+
+  <button id="togglePencil">Enable Freehand Pencil</button>
+  <button onclick="exportGeoJSON()">Export GeoJSON</button>
+  <button onclick="exportPNG()">Export PNG</button>
+</div>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dom-to-image@2.6.0/src/dom-to-image.min.js"></script>
+
+<script>
+// Initialize map
+const map = L.map('map', { center: [20, 80], zoom: 4 });
+
+// Base layers
+const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, noWrap:true }).addTo(map);
+const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, noWrap:true });
+const terrain = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 17, noWrap:true });
+L.control.layers({OSM: osm, Satellite: satellite, Terrain: terrain}).addTo(map);
+
+// Feature group for drawn shapes
+const drawnItems = new L.FeatureGroup();
+map.addLayer(drawnItems);
+
+// Load India boundaries in black (uneditable)
+fetch('india.geojson')
+  .then(res => res.json())
+  .then(data => {
+    L.geoJSON(data, {
+      style: { color:'#000000', weight:2, fillColor:'#000000', fillOpacity:0.2 },
+      interactive: false
+    }).addTo(map);
+  })
+  .catch(err => console.error("Error loading india.geojson:", err));
+
+// --- Leaflet Draw Toolbar ---
+const drawControl = new L.Control.Draw({
+  draw: {
+    polyline: { shapeOptions: { color: document.getElementById('strokeColor').value } },
+    polygon: { allowIntersection: false, shapeOptions: { color: document.getElementById('strokeColor').value, fillColor: document.getElementById('fillColor').value, fillOpacity:0.5 } },
+    rectangle: { shapeOptions: { color: document.getElementById('strokeColor').value, fillColor: document.getElementById('fillColor').value, fillOpacity:0.5 } },
+    circle: { shapeOptions: { color: document.getElementById('strokeColor').value, fillColor: document.getElementById('fillColor').value, fillOpacity:0.5 } },
+    marker: true,
+    circlemarker: false
+  },
+  edit: {
+    featureGroup: drawnItems,
+    remove: true
+  }
+});
+map.addControl(drawControl);
+
+// Store shapes with labels
+const shapesWithLabels = [];
+
+// Handle creation from Draw toolbar
+map.on(L.Draw.Event.CREATED, function (e) {
+  const type = e.layerType;
+  const layer = e.layer;
+
+  // Apply default styles
+  if(type === 'polygon' || type === 'rectangle' || type === 'circle'){
+    layer.setStyle({
+      color: document.getElementById('strokeColor').value,
+      fillColor: document.getElementById('fillColor').value,
+      fillOpacity: 0.5
+    });
+  }
+
+  drawnItems.addLayer(layer);
+
+  // Prompt for label
+  if(type === 'polygon' || type === 'rectangle' || type === 'circle'){
+    const name = prompt("Enter a name for this shape:");
+    if(name){
+      const center = layer.getBounds ? layer.getBounds().getCenter() : layer.getLatLng();
+      const labelColor = document.getElementById('labelColor').value;
+      const font = document.getElementById('labelFont').value;
+      const labelIcon = L.divIcon({
+        className: 'polygon-label',
+        html: `<span style="color:${labelColor}; font-family:${font}; font-weight:bold;">${name}</span>`,
+        iconSize:[100,40]
+      });
+      const marker = L.marker(center, { icon: labelIcon, draggable:true }).addTo(drawnItems);
+
+      // Drag synchronization
+      if(layer.dragging) layer.dragging.enable();
+      if(layer.setLatLngs){
+        layer.on('drag', () => { marker.setLatLng(layer.getBounds().getCenter()); });
+        marker.on('drag', () => {
+          const latDiff = marker.getLatLng().lat - layer.getBounds().getCenter().lat;
+          const lngDiff = marker.getLatLng().lng - layer.getBounds().getCenter().lng;
+          layer.setLatLngs(layer.getLatLngs().map(ll => ({lat: ll.lat + latDiff, lng: ll.lng + lngDiff})));
+          marker.setLatLng(layer.getBounds().getCenter());
+        });
+      }
+
+      // Edit label on click
+      marker.on('click', () => {
+        const newName = prompt("Edit label:", name);
+        if(newName){
+          marker.setIcon(L.divIcon({
+            className:'polygon-label',
+            html:`<span style="color:${labelColor}; font-family:${font}; font-weight:bold;">${newName}</span>`,
+            iconSize:[100,40]
+          }));
+        }
+      });
+
+      shapesWithLabels.push({shape: layer, label: marker});
+    }
+  }
+});
+
+// Update styles dynamically
+document.getElementById('fillColor').addEventListener('change', () => {
+  drawnItems.eachLayer(layer => { if(layer.setStyle) layer.setStyle({ fillColor: document.getElementById('fillColor').value }); });
+});
+document.getElementById('strokeColor').addEventListener('change', () => {
+  drawnItems.eachLayer(layer => { if(layer.setStyle) layer.setStyle({ color: document.getElementById('strokeColor').value }); });
+});
+
+// --- Freehand Pencil ---
+let isDrawing = false, currentLine = null;
+const pencilButton = document.getElementById('togglePencil');
+
+pencilButton.addEventListener('click', () => {
+  isDrawing = !isDrawing;
+  pencilButton.textContent = isDrawing ? "Disable Freehand Pencil" : "Enable Freehand Pencil";
+  if(isDrawing){
+    map.getContainer().style.cursor = "crosshair";
+    map.dragging.disable(); map.touchZoom.disable(); map.doubleClickZoom.disable();
+    map.scrollWheelZoom.disable(); map.boxZoom.disable(); map.keyboard.disable();
+  } else {
+    map.getContainer().style.cursor = "";
+    map.dragging.enable(); map.touchZoom.enable(); map.doubleClickZoom.enable();
+    map.scrollWheelZoom.enable(); map.boxZoom.enable(); map.keyboard.enable();
+  }
+});
+
+map.on('mousedown', e => {
+  if(!isDrawing) return;
+  currentLine = L.polyline([e.latlng], { color: document.getElementById('strokeColor').value }).addTo(drawnItems);
+});
+
+map.on('mousemove', e => {
+  if(!isDrawing || !currentLine) return;
+  currentLine.addLatLng(e.latlng);
+});
+
+map.on('mouseup', e => {
+  if(!isDrawing || !currentLine) return;
+  const latlngs = currentLine.getLatLngs();
+  if(latlngs.length > 2){
+    const fillColor = document.getElementById('fillColor').value;
+    const strokeColor = document.getElementById('strokeColor').value;
+    const polygon = L.polygon(latlngs, { color: strokeColor, fillColor: fillColor, fillOpacity:0.5, draggable:true }).addTo(drawnItems);
+
+    // Prompt for name immediately
+    const name = prompt("Enter a name for this freehand shape:");
+    if(name){
+      const center = polygon.getBounds().getCenter();
+      const labelColor = document.getElementById('labelColor').value;
+      const font = document.getElementById('labelFont').value;
+      const labelIcon = L.divIcon({
+        className: 'polygon-label',
+        html: `<span style="color:${labelColor}; font-family:${font}; font-weight:bold;">${name}</span>`,
+        iconSize:[100,40]
+      });
+      const marker = L.marker(center, { icon: labelIcon, draggable:true }).addTo(drawnItems);
+
+      // Drag synchronization
+      polygon.on('drag', () => { marker.setLatLng(polygon.getBounds().getCenter()); });
+      marker.on('drag', () => {
+        const latDiff = marker.getLatLng().lat - polygon.getBounds().getCenter().lat;
+        const lngDiff = marker.getLatLng().lng - polygon.getBounds().getCenter().lng;
+        polygon.setLatLngs(polygon.getLatLngs().map(ll => ({lat: ll.lat + latDiff, lng: ll.lng + lngDiff})));
+        marker.setLatLng(polygon.getBounds().getCenter());
+      });
+    }
+    map.removeLayer(currentLine);
+  }
+  currentLine = null;
+});
+
+// --- Export
+function exportGeoJSON(){
+  const geojson = drawnItems.toGeoJSON();
+  const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(geojson, null, 2));
+  const a = document.createElement('a');
+  a.href = dataStr;
+  a.download = 'drawing.geojson';
+  a.click();
+}
+
+function exportPNG(){
+  domtoimage.toPng(document.getElementById('map'))
+    .then(function(dataUrl){
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = 'map_drawing.png';
+      a.click();
+    })
+    .catch(function(error){ console.error('PNG export failed:', error); });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>India Map Freehand Drawing</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-draw@1.0.4/dist/leaflet.draw.css"/>
+<style>
+  body { margin:0; font-family: Arial, sans-serif; }
+  #map { width:100%; height:90vh; }
+  #toolbar { padding:5px; text-align:center; background:#f0f0f0; }
+  select, button { margin:3px; padding:5px 10px; font-size:14px; }
+</style>
+</head>
+<body>
+
+<h2 style="text-align:center;">Draw on India Map (Freehand Pencil Mode)</h2>
+
+<div id="toolbar">
+  <label>Fill Color:</label>
+  <select id="fillColor">
+    <option value="orange">Orange</option>
+    <option value="red">Red</option>
+    <option value="green">Green</option>
+    <option value="blue">Blue</option>
+    <option value="yellow">Yellow</option>
+    <option value="purple">Purple</option>
+  </select>
+  <label>Stroke Color:</label>
+  <select id="strokeColor">
+    <option value="red">Red</option>
+    <option value="black">Black</option>
+    <option value="blue">Blue</option>
+    <option value="green">Green</option>
+    <option value="orange">Orange</option>
+    <option value="purple">Purple</option>
+  </select>
+  <button id="togglePencil">Enable Freehand Pencil</button>
+  <button onclick="exportGeoJSON()">Export GeoJSON</button>
+  <button onclick="exportPNG()">Export PNG</button>
+</div>
+
+<div id="map"></div>
+
+<!-- Leaflet & Leaflet Draw -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+<!-- dom-to-image for PNG export -->
+<script src="https://cdn.jsdelivr.net/npm/dom-to-image@2.6.0/src/dom-to-image.min.js"></script>
+
+<script>
+// Initialize map
+const map = L.map('map', { center: [23, 82], zoom: 5 });
+
+// Base layers
+const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 });
+const terrain = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 17 });
+L.control.layers({OSM: osm, Satellite: satellite, Terrain: terrain}).addTo(map);
+
+// Load India boundary
+fetch('india.geojson')
+  .then(res => res.json())
+  .then(data => {
+    L.geoJSON(data, {
+      style:{ color:'#000', weight:1.5, fillOpacity:0.05 },
+      interactive: false
+    }).addTo(map);
+  })
+  .catch(err => console.error("Error loading india.geojson:", err));
+
+// Feature group to store drawn items
+const drawnItems = new L.FeatureGroup();
+map.addLayer(drawnItems);
+
+// Draw control for standard shapes
+let drawControl = new L.Control.Draw({
+  edit: { featureGroup: drawnItems },
+  draw: {
+    polygon: { allowIntersection: false, shapeOptions: { color: 'red', fillColor:'orange', fillOpacity:0.5 } },
+    rectangle: { shapeOptions: { color: 'red', fillColor:'orange', fillOpacity:0.5 } },
+    circle: { shapeOptions: { color: 'red', fillColor:'orange', fillOpacity:0.5 } },
+    circlemarker: { shapeOptions: { color: 'red', fillColor:'orange', fillOpacity:0.5 } },
+    polyline: { shapeOptions: { color: 'red' } },
+    marker: true
+  }
+});
+map.addControl(drawControl);
+
+// Update colors for standard shapes
+function updateDrawingOptions() {
+  const fill = document.getElementById('fillColor').value;
+  const stroke = document.getElementById('strokeColor').value;
+  drawControl.setDrawingOptions({
+    polygon: { color: stroke, fillColor: fill, fillOpacity:0.5 },
+    rectangle: { color: stroke, fillColor: fill, fillOpacity:0.5 },
+    circle: { color: stroke, fillColor: fill, fillOpacity:0.5 },
+    circlemarker: { color: stroke, fillColor: fill, fillOpacity:0.5 },
+    polyline: { color: stroke }
+  });
+}
+document.getElementById('fillColor').addEventListener('change', updateDrawingOptions);
+document.getElementById('strokeColor').addEventListener('change', updateDrawingOptions);
+
+// Handle standard shape creation
+map.on(L.Draw.Event.CREATED, function (e) {
+  drawnItems.addLayer(e.layer);
+});
+
+// --- Freehand pencil with post-fill ---
+let isDrawing = false;
+let currentLine = null;
+let drawnPolygons = [];
+const pencilButton = document.getElementById('togglePencil');
+const fillColorSelect = document.getElementById('fillColor');
+
+pencilButton.addEventListener('click', () => {
+  isDrawing = !isDrawing;
+  pencilButton.textContent = isDrawing ? "Disable Freehand Pencil" : "Enable Freehand Pencil";
+
+  if (isDrawing) {
+    map.getContainer().style.cursor = "crosshair";
+    map.dragging.disable();
+    map.touchZoom.disable();
+    map.doubleClickZoom.disable();
+    map.scrollWheelZoom.disable();
+    map.boxZoom.disable();
+    map.keyboard.disable();
+  } else {
+    map.getContainer().style.cursor = "";
+    map.dragging.enable();
+    map.touchZoom.enable();
+    map.doubleClickZoom.enable();
+    map.scrollWheelZoom.enable();
+    map.boxZoom.enable();
+    map.keyboard.enable();
+  }
+});
+
+map.on('mousedown', function(e){
+  if(!isDrawing) return;
+  currentLine = L.polyline([e.latlng], {
+    color: document.getElementById('strokeColor').value,
+    fillOpacity: 0
+  }).addTo(drawnItems);
+});
+
+map.on('mousemove', function(e){
+  if(!isDrawing || !currentLine) return;
+  currentLine.addLatLng(e.latlng);
+});
+
+map.on('mouseup', function(e){
+  if(!isDrawing || !currentLine) return;
+  const latlngs = currentLine.getLatLngs();
+  if(latlngs.length > 2){
+    const polygon = L.polygon(latlngs, {
+      color: currentLine.options.color,
+      fillColor: fillColorSelect.value,
+      fillOpacity: 0.5
+    }).addTo(drawnItems);
+    drawnPolygons.push(polygon);
+    map.removeLayer(currentLine);
+  }
+  currentLine = null;
+});
+
+fillColorSelect.addEventListener('change', () => {
+  drawnPolygons.forEach(poly => {
+    poly.setStyle({ fillColor: fillColorSelect.value });
+  });
+});
+
+// Export GeoJSON
+function exportGeoJSON() {
+  const geojson = drawnItems.toGeoJSON();
+  const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(geojson, null, 2));
+  const a = document.createElement('a');
+  a.href = dataStr;
+  a.download = 'drawing.geojson';
+  a.click();
+}
+
+// Export PNG (works with map tiles)
+function exportPNG() {
+  domtoimage.toPng(document.getElementById('map'))
+    .then(function(dataUrl){
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = 'map_drawing.png';
+      a.click();
+    })
+    .catch(function(error){
+      console.error('PNG export failed:', error);
+    });
+}
+</script>
+
+</body>
+</html>
